@@ -51,6 +51,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool DownloadEpisodeThumbnails { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether posters get a "DRTV" badge (and "DRM" on titles that can't be played).
+    /// </summary>
+    public bool PosterBadges { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the number of parallel requests to DR during sync.
     /// </summary>
     public int SyncParallelism { get; set; } = 6;

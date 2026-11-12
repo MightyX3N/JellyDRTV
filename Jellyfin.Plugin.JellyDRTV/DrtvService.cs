@@ -135,7 +135,7 @@ public class DrtvService
             Directory.CreateDirectory(Path.Combine(cfg.LibraryPath, f));
         }
 
-        return new LibraryWriter(Path.GetFullPath(cfg.LibraryPath), ServerUrl, cfg.DownloadEpisodeThumbnails, _logger);
+        return new LibraryWriter(Path.GetFullPath(cfg.LibraryPath), ServerUrl, cfg.DownloadEpisodeThumbnails, cfg.PosterBadges, _logger);
     }
 
     /// <summary>Fetches the whole DRTV catalog and writes it to the library folder.</summary>
@@ -176,7 +176,8 @@ public class DrtvService
                             }
                             else if (s.Seasons.Sum(x => x.Episodes.Count) > 0)
                             {
-                                var (e, f) = await writer.WriteSeriesAsync(s, token).ConfigureAwait(false);
+                                var drm = await IsDrmAsync(s.Title.Id, FirstEpisodeId(s), token).ConfigureAwait(false);
+                                var (e, f) = await writer.WriteSeriesAsync(s, drm, token).ConfigureAwait(false);
                                 foreach (var x in e)
                                 {
                                     entries[x.DrId] = x;
@@ -192,7 +193,8 @@ public class DrtvService
                         }
                         else
                         {
-                            var entry = await writer.WriteTitleAsync(title, token).ConfigureAwait(false);
+                            var drm = await IsDrmAsync(title.Id, title.Id, token).ConfigureAwait(false);
+                            var entry = await writer.WriteTitleAsync(title, drm, token).ConfigureAwait(false);
                             entries[entry.DrId] = entry;
                         }
                     }
@@ -316,7 +318,8 @@ public class DrtvService
             return null;
         }
 
-        var (entries, folders) = await writer.WriteSeriesAsync(s, ct).ConfigureAwait(false);
+        var seriesDrm = await IsDrmAsync(s.Title.Id, FirstEpisodeId(s), ct).ConfigureAwait(false);
+        var (entries, folders) = await writer.WriteSeriesAsync(s, seriesDrm, ct).ConfigureAwait(false);
         var ids = entries.Select(e => e.DrId).ToHashSet();
         State.Update(state =>
         {
@@ -383,7 +386,7 @@ public class DrtvService
             case "program":
             {
                 var t = await _api.GetTitleAsync(drId, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(drId);
-                var entry = await writer.WriteTitleAsync(t, ct).ConfigureAwait(false);
+                var entry = await writer.WriteTitleAsync(t, await IsDrmAsync(t.Id, t.Id, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
                 State.Update(s => s.Items[entry.DrId] = entry);
                 NotifyChanged(Path.GetDirectoryName(entry.BasePath)!);
                 return Enqueue(drId) ? 1 : 0;
@@ -560,6 +563,36 @@ public class DrtvService
             }
         }
     }
+
+    /// <summary>
+    /// Whether a title is DRM-protected. DR's catalog doesn't say, so one stream is asked for
+    /// (the film itself, or the newest episode of a series) and the answer is remembered.
+    /// </summary>
+    public async Task<bool> IsDrmAsync(string titleId, string? playableId, CancellationToken ct)
+    {
+        if (State.Read(s => s.Drm.TryGetValue(titleId, out var known) ? (bool?)known : null) is bool cached)
+        {
+            return cached;
+        }
+
+        if (string.IsNullOrEmpty(playableId))
+        {
+            return false;
+        }
+
+        var stream = await _api.GetStreamAsync(playableId, ct).ConfigureAwait(false);
+        if (stream is null)
+        {
+            // Unknown (e.g. not available yet); ask again next sync.
+            return false;
+        }
+
+        State.Update(s => s.Drm[titleId] = stream.IsDrmProtected);
+        return stream.IsDrmProtected;
+    }
+
+    private static string? FirstEpisodeId(DrSeries s)
+        => s.Seasons.LastOrDefault(x => x.Episodes.Count > 0)?.Episodes.LastOrDefault()?.Id;
 
     /// <summary>Finds the DR id behind a file or folder in the library.</summary>
     public (string? Id, string? Kind) Lookup(string path)

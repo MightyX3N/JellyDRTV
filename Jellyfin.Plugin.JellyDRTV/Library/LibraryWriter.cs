@@ -21,10 +21,12 @@ public class LibraryWriter
     private readonly string _root;
     private readonly string _serverUrl;
     private readonly bool _episodeThumbs;
+    private readonly bool _badges;
     private readonly ILogger _logger;
 
-    public LibraryWriter(string root, string serverUrl, bool episodeThumbs, ILogger logger)
+    public LibraryWriter(string root, string serverUrl, bool episodeThumbs, bool badges, ILogger logger)
     {
+        _badges = badges;
         _root = root;
         _serverUrl = serverUrl.TrimEnd('/');
         _episodeThumbs = episodeThumbs;
@@ -83,15 +85,15 @@ public class LibraryWriter
     }
 
     /// <summary>Writes a film or single program. Returns its library entry.</summary>
-    public async Task<LibraryEntry> WriteTitleAsync(DrTitle t, CancellationToken ct)
+    public async Task<LibraryEntry> WriteTitleAsync(DrTitle t, bool drm, CancellationToken ct)
     {
         var basePath = TitleBasePath(t);
         var dir = Path.GetDirectoryName(basePath)!;
         Directory.CreateDirectory(dir);
 
         WriteStrmIfNeeded(basePath, t.Id);
-        WriteIfChanged(basePath + ".nfo", BuildMovieNfo(t));
-        await FetchImageAsync(t.PosterUrl, Path.Combine(dir, "poster.jpg"), ct).ConfigureAwait(false);
+        WriteIfChanged(basePath + ".nfo", BuildMovieNfo(t, drm));
+        await WritePosterAsync(t.PosterUrl, dir, drm, ct).ConfigureAwait(false);
         await FetchImageAsync(t.FanartUrl, Path.Combine(dir, "fanart.jpg"), ct).ConfigureAwait(false);
 
         return new LibraryEntry
@@ -105,7 +107,7 @@ public class LibraryWriter
     }
 
     /// <summary>Writes a full series. Returns entries for every episode, plus the folder → id map.</summary>
-    public async Task<(List<LibraryEntry> Entries, Dictionary<string, string> Folders)> WriteSeriesAsync(DrSeries s, CancellationToken ct)
+    public async Task<(List<LibraryEntry> Entries, Dictionary<string, string> Folders)> WriteSeriesAsync(DrSeries s, bool drm, CancellationToken ct)
     {
         var entries = new List<LibraryEntry>();
         var folders = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -113,8 +115,8 @@ public class LibraryWriter
         Directory.CreateDirectory(showDir);
         folders[showDir] = s.Title.Id;
 
-        WriteIfChanged(Path.Combine(showDir, "tvshow.nfo"), BuildSeriesNfo(s.Title));
-        await FetchImageAsync(s.Title.PosterUrl, Path.Combine(showDir, "poster.jpg"), ct).ConfigureAwait(false);
+        WriteIfChanged(Path.Combine(showDir, "tvshow.nfo"), BuildSeriesNfo(s.Title, drm));
+        await WritePosterAsync(s.Title.PosterUrl, showDir, drm, ct).ConfigureAwait(false);
         await FetchImageAsync(s.Title.FanartUrl, Path.Combine(showDir, "fanart.jpg"), ct).ConfigureAwait(false);
 
         var thumbs = new List<(string Url, string Path)>();
@@ -176,6 +178,7 @@ public class LibraryWriter
             // Film/program folders only hold this one title.
             TryDelete(Path.Combine(dir, "poster.jpg"));
             TryDelete(Path.Combine(dir, "fanart.jpg"));
+            TryDelete(Path.Combine(dir, PosterStampFile));
         }
 
         RemoveEmptyDirs(dir);
@@ -201,7 +204,7 @@ public class LibraryWriter
 
             foreach (var f in Directory.GetFiles(dir))
             {
-                var isArt = f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase);
+                var isArt = f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(f) == PosterStampFile;
                 var isOurNfo = f.EndsWith(".nfo", StringComparison.OrdinalIgnoreCase) && IsOurNfo(f);
                 if (!isArt && !isOurNfo)
                 {
@@ -263,6 +266,47 @@ public class LibraryWriter
         }
     }
 
+    /// <summary>Name of the small file that remembers how poster.jpg was made, so it's only redrawn when needed.</summary>
+    public const string PosterStampFile = ".jellydrtv-poster";
+
+    /// <summary>Downloads the poster and draws the DRTV / DRM badges on it.</summary>
+    private async Task WritePosterAsync(string? url, string dir, bool drm, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(url))
+        {
+            return;
+        }
+
+        var posterPath = Path.Combine(dir, "poster.jpg");
+        var stampPath = Path.Combine(dir, PosterStampFile);
+        var stamp = $"{url}|badges={_badges}|drm={drm}|v={PosterBadge.Version}";
+        try
+        {
+            if (File.Exists(posterPath) && File.Exists(stampPath) && File.ReadAllText(stampPath) == stamp)
+            {
+                return;
+            }
+
+            var bytes = await DrApiClient.HttpClient.GetByteArrayAsync(url, ct).ConfigureAwait(false);
+            if (bytes.Length == 0)
+            {
+                return;
+            }
+
+            if (_badges || drm)
+            {
+                bytes = PosterBadge.Apply(bytes, _badges, drm);
+            }
+
+            await File.WriteAllBytesAsync(posterPath, bytes, ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(stampPath, stamp, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            _logger.LogDebug("Could not write poster {Url}: {Message}", url, ex.Message);
+        }
+    }
+
     private async Task FetchImageAsync(string? url, string path, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(url) || File.Exists(path))
@@ -304,7 +348,7 @@ public class LibraryWriter
 
     private static string Genres(DrTitle t) => string.Concat(t.Genres.Select(g => $"  <genre>{X(g)}</genre>\n"));
 
-    private static string BuildMovieNfo(DrTitle t)
+    private static string BuildMovieNfo(DrTitle t, bool drm)
     {
         var sb = new StringBuilder();
         sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>\n<movie>\n");
@@ -327,12 +371,18 @@ public class LibraryWriter
 
         sb.Append(Genres(t));
         sb.Append("  <studio>DR</studio>\n");
+        sb.Append("  <tag>DRTV</tag>\n");
+        if (drm)
+        {
+            sb.Append("  <tag>DRM</tag>\n");
+        }
+
         sb.Append($"  <uniqueid type=\"drtv\" default=\"true\">{X(t.Id)}</uniqueid>\n");
         sb.Append("  <lockedfields>Name|Overview|Genres|Studios</lockedfields>\n  <lockdata>true</lockdata>\n</movie>\n");
         return sb.ToString();
     }
 
-    private static string BuildSeriesNfo(DrTitle t)
+    private static string BuildSeriesNfo(DrTitle t, bool drm)
     {
         var sb = new StringBuilder();
         sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>\n<tvshow>\n");
@@ -345,6 +395,12 @@ public class LibraryWriter
 
         sb.Append(Genres(t));
         sb.Append("  <studio>DR</studio>\n");
+        sb.Append("  <tag>DRTV</tag>\n");
+        if (drm)
+        {
+            sb.Append("  <tag>DRM</tag>\n");
+        }
+
         sb.Append($"  <uniqueid type=\"drtv\" default=\"true\">{X(t.Id)}</uniqueid>\n");
         sb.Append("  <lockedfields>Name|Overview|Genres|Studios</lockedfields>\n</tvshow>\n");
         return sb.ToString();

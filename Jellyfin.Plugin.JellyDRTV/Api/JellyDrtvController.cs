@@ -93,6 +93,7 @@ public class JellyDrtvController : ControllerBase
             Movies = s.Items.Values.Count(e => e.Kind == "movie"),
             Programs = s.Items.Values.Count(e => e.Kind == "program"),
             Downloaded = s.Items.Values.Count(e => LibraryWriter.FindVideo(e.BasePath) is not null),
+            Drm = s.Drm.Count(d => d.Value),
             YtDlpVersion = ytdlp,
             LibraryPath = cfg.LibraryPath,
         });

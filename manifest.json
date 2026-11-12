@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.0.2.0",
+        "changelog": "DRM-protected titles are detected and marked: red DRM badge on the poster and a DRM tag (Jellyfin can't play or download them). DRTV badge on all DRTV posters (can be turned off in settings).",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/MightyX3N/JellyDRTV/main/releases/jellydrtv_1.0.2.0.zip",
+        "checksum": "fe08475e5d8a396fea97f60079b4c74d",
+        "timestamp": "2026-11-12T06:34:46Z"
+      },
+      {
         "version": "1.0.1.0",
         "changelog": "Fix playback when Jellyfin runs on another port than 8096 (e.g. Docker on a NAS): Jellyfin's own address is now detected automatically and existing placeholders are updated.",
         "targetAbi": "12.4.0.0",

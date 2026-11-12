@@ -97,6 +97,13 @@
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label class="emby-checkbox-label">
+                        <input id="jdBadges" type="checkbox" is="emby-checkbox" />
+                        <span>Badges on posters</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Adds a "DRTV" badge to every DRTV poster. Titles that are DRM-protected (they can't be played or downloaded through Jellyfin) always get a red "DRM" badge.</div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
                         <input id="jdThumbs" type="checkbox" is="emby-checkbox" />
                         <span>Fetch episode thumbnails</span>
                     </label>
@@ -132,7 +139,7 @@
                     if (!s.LibraryPath) { lines.push('<b>Set the library folder below, save, then sync.</b>'); }
                     lines.push('Last sync: ' + esc(fmtDate(s.LastSync)) + (s.Syncing ? ' — <b>sync running…</b>' : ''));
                     if (s.LastSyncResult) { lines.push(esc(s.LastSyncResult)); }
-                    lines.push('In library: ' + s.Titles + ' titles · ' + s.Episodes + ' episodes · ' + s.Movies + ' films · ' + s.Programs + ' programs · ' + s.Downloaded + ' downloaded');
+                    lines.push('In library: ' + s.Titles + ' titles · ' + s.Episodes + ' episodes · ' + s.Movies + ' films · ' + s.Programs + ' programs · ' + s.Downloaded + ' downloaded' + (s.Drm ? ' · ' + s.Drm + ' DRM-protected (can\'t play)' : ''));
                     lines.push('yt-dlp: ' + esc(s.YtDlpVersion || 'not installed yet (installed automatically on the first download)'));
                     $('#jdStatus').innerHTML = lines.join('<br>');
                 });
@@ -271,6 +278,7 @@
                     $('#jdParallel').value = cfg.SyncParallelism || 4;
                     $('#jdFavorites').checked = !!cfg.FavoriteDownloads;
                     $('#jdThumbs').checked = !!cfg.DownloadEpisodeThumbnails;
+                    $('#jdBadges').checked = cfg.PosterBadges !== false;
                     Dashboard.hideLoadingMsg();
                 });
                 refresh();
@@ -291,6 +299,7 @@
                     cfg.SyncParallelism = parseInt($('#jdParallel').value, 10) || 4;
                     cfg.FavoriteDownloads = $('#jdFavorites').checked;
                     cfg.DownloadEpisodeThumbnails = $('#jdThumbs').checked;
+                    cfg.PosterBadges = $('#jdBadges').checked;
                     return ApiClient.updatePluginConfiguration(pluginId, cfg);
                 }).then(function (result) {
                     Dashboard.processPluginConfigurationUpdateResult(result);

@@ -5,9 +5,10 @@ A Jellyfin plugin that puts all of DRTV into Jellyfin as a normal library.
 - **Everything streams.** Every series, film and program on DRTV shows up in Jellyfin with title, description, poster and episode pictures. Press play and it streams straight from DR, in every Jellyfin app.
 - **Download what you want to keep.** Episodes, whole seasons, whole series, films and programs. Downloads replace the streaming placeholder in the same spot, with Danish subtitles, so they survive when DR removes the title.
 - **Follow series.** New episodes are downloaded automatically.
+- **You can see what's what.** Posters get a small "DRTV" badge, and titles that are DRM-protected get a red "DRM" badge and a `DRM` tag, because Jellyfin can't play or download those. The badges can be turned off.
 - **Favourite = download.** Mark something as favourite in any Jellyfin app (phone, TV, web) and it's downloaded. A favourited series is followed.
 
-> Only works on a Jellyfin server **in Denmark**. DR blocks most streams outside Denmark, and the plugin does not try to get around that. Titles that are DRM-protected can't be played or downloaded.
+> Only works on a Jellyfin server **in Denmark**. DR blocks most streams outside Denmark, and the plugin does not try to get around that. Titles that are DRM-protected can't be played or downloaded; they are marked so you can see which ones.
 
 ## Requirements
 

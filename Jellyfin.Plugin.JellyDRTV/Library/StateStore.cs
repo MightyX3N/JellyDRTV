@@ -72,6 +72,9 @@ public class PluginState
     public Dictionary<string, string> Folders { get; set; } = new(StringComparer.Ordinal);
 
     public List<DownloadJob> Queue { get; set; } = [];
+
+    /// <summary>Gets or sets which titles (film/program/series id) are DRM-protected, so they're only checked once.</summary>
+    public Dictionary<string, bool> Drm { get; set; } = [];
 }
 
 /// <summary>Thread-safe JSON-backed state.</summary>
