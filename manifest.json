@@ -11,7 +11,7 @@
         "version": "1.0.0.0",
         "changelog": "First version.",
         "targetAbi": "12.4.0.0",
-        "sourceUrl": "https://raw.githubusercontent.com/MightyX3N/jellydrtv/main/releases/jellydrtv_1.0.0.0.zip",
+        "sourceUrl": "https://raw.githubusercontent.com/MightyX3N/JellyDRTV/main/releases/jellydrtv_1.0.0.0.zip",
         "checksum": "04bf6fcbd12680d10033b9d83712ad4a",
         "timestamp": "2026-11-12T04:33:25Z"
       }

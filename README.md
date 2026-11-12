@@ -22,7 +22,7 @@ yt-dlp is downloaded and kept up to date by the plugin automatically. Jellyfin's
 
 1. In Jellyfin go to **Dashboard → Plugins → Repositories**, press **+** and add:
    - Name: `JellyDRTV`
-   - URL: `https://raw.githubusercontent.com/MightyX3N/jellydrtv/main/manifest.json`
+   - URL: `https://raw.githubusercontent.com/MightyX3N/JellyDRTV/main/manifest.json`
 2. Go to **Catalog**, find **JellyDRTV** and install it.
 3. Restart Jellyfin.
 
