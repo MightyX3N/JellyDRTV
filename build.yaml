@@ -1,0 +1,18 @@
+---
+name: "JellyDRTV"
+guid: "6f1d2c3a-8b4e-4d7a-9c21-5e0a7b3d9f14"
+version: "1.0.0.0"
+targetAbi: "12.4.0.0"
+framework: "net10.0"
+overview: "DRTV as a Jellyfin library"
+description: >
+  Puts the whole DRTV catalog into Jellyfin as a normal library. Everything streams
+  straight from DR; download episodes, seasons, series, films and programs you want
+  to keep, and follow series to download new episodes automatically.
+  Only works on a Jellyfin server in Denmark.
+category: "General"
+owner: "MightyX3N"
+artifacts:
+- "Jellyfin.Plugin.JellyDRTV.dll"
+changelog: >
+  First version.
