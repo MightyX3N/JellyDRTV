@@ -61,6 +61,9 @@ public class PluginState
 
     public string? LastSyncResult { get; set; }
 
+    /// <summary>Gets or sets the Jellyfin address the .strm files currently point at.</summary>
+    public string? StrmBaseUrl { get; set; }
+
     public List<DrTitle> Catalog { get; set; } = [];
 
     public Dictionary<string, LibraryEntry> Items { get; set; } = [];

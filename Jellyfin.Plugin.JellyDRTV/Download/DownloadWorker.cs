@@ -48,12 +48,39 @@ public partial class DownloadWorker : BackgroundService
     public override Task StartAsync(CancellationToken cancellationToken)
     {
         _userDataManager.UserDataSaved += OnUserDataSaved;
+        if (Plugin.Instance is not null)
+        {
+            Plugin.Instance.ConfigurationChanged += OnConfigurationChanged;
+        }
+
+        // Point the .strm files at Jellyfin's current address (port or base URL may have changed).
+        _ = Task.Run(() => FixStrmAddresses(), cancellationToken);
         return base.StartAsync(cancellationToken);
+    }
+
+    private void OnConfigurationChanged(object? sender, MediaBrowser.Model.Plugins.BasePluginConfiguration e)
+        => _ = Task.Run(() => FixStrmAddresses());
+
+    private void FixStrmAddresses()
+    {
+        try
+        {
+            _service.UpdateStrmAddressesIfNeeded();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "JellyDRTV: could not update .strm addresses");
+        }
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)
     {
         _userDataManager.UserDataSaved -= OnUserDataSaved;
+        if (Plugin.Instance is not null)
+        {
+            Plugin.Instance.ConfigurationChanged -= OnConfigurationChanged;
+        }
+
         return base.StopAsync(cancellationToken);
     }
 

@@ -29,9 +29,10 @@ public class PluginConfiguration : BasePluginConfiguration
     public string LibraryPath { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the address Jellyfin uses to reach itself. Written into the .strm files.
+    /// Gets or sets the address Jellyfin uses to reach itself, written into the .strm files.
+    /// Empty = detected automatically from Jellyfin's own port and base URL.
     /// </summary>
-    public string ServerUrl { get; set; } = "http://127.0.0.1:8096";
+    public string ServerUrl { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the path to yt-dlp. Empty = the plugin downloads and updates its own copy.

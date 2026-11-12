@@ -2,6 +2,7 @@ using Jellyfin.Plugin.JellyDRTV.Configuration;
 using Jellyfin.Plugin.JellyDRTV.Dr;
 using Jellyfin.Plugin.JellyDRTV.Library;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 
@@ -15,13 +16,15 @@ public class DrtvService
     private readonly ILogger<DrtvService> _logger;
     private readonly ILibraryManager _libraryManager;
     private readonly ILibraryMonitor _libraryMonitor;
+    private readonly IServerApplicationHost _host;
     private readonly DrApiClient _api;
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly SemaphoreSlim _queueSignal = new(0);
 
-    public DrtvService(ILogger<DrtvService> logger, ILibraryManager libraryManager, ILibraryMonitor libraryMonitor, IApplicationPaths paths)
+    public DrtvService(ILogger<DrtvService> logger, ILibraryManager libraryManager, ILibraryMonitor libraryMonitor, IServerApplicationHost host, IApplicationPaths paths)
     {
         _logger = logger;
+        _host = host;
         _libraryManager = libraryManager;
         _libraryMonitor = libraryMonitor;
         _api = new DrApiClient(logger);
@@ -35,6 +38,70 @@ public class DrtvService
     public static PluginConfiguration Config => Plugin.Instance?.Configuration ?? new PluginConfiguration();
 
     public bool IsSyncing => _syncLock.CurrentCount == 0;
+
+    /// <summary>
+    /// Gets the address Jellyfin's own ffmpeg uses to reach the stream endpoint. Unless the user set one,
+    /// it's taken from Jellyfin's real port and base URL, which inside Docker (e.g. on a NAS) is often not 8096.
+    /// </summary>
+    public string ServerUrl
+    {
+        get
+        {
+            // "http://127.0.0.1:8096" was the default in 1.0.0.0; treat it as "detect automatically".
+            var configured = Config.ServerUrl?.Trim();
+            if (!string.IsNullOrEmpty(configured) && configured.TrimEnd('/') != "http://127.0.0.1:8096")
+            {
+                return configured.TrimEnd('/');
+            }
+
+            return _host.GetLocalApiUrl("127.0.0.1", "http", _host.HttpPort).TrimEnd('/');
+        }
+    }
+
+    /// <summary>
+    /// Rewrites every .strm placeholder when Jellyfin's address changed (new port, base URL or setting).
+    /// Quick: only touches local files, no requests to DR.
+    /// </summary>
+    public int UpdateStrmAddressesIfNeeded()
+    {
+        var writer = CreateWriter();
+        if (writer is null)
+        {
+            return 0;
+        }
+
+        var url = ServerUrl;
+        if (State.Read(s => s.StrmBaseUrl) == url)
+        {
+            return 0;
+        }
+
+        var entries = State.Read(s => s.Items.Values.ToList());
+        var changed = 0;
+        foreach (var e in entries)
+        {
+            var strm = e.BasePath + ".strm";
+            try
+            {
+                if (File.Exists(strm))
+                {
+                    var wanted = writer.StreamUrl(e.DrId);
+                    if (File.ReadAllText(strm) != wanted)
+                    {
+                        File.WriteAllText(strm, wanted);
+                        changed++;
+                    }
+                }
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        State.Update(s => s.StrmBaseUrl = url);
+        _logger.LogInformation("JellyDRTV: stream address is now {Url}; updated {Count} .strm files", url, changed);
+        return changed;
+    }
 
     /// <summary>
     /// Tells Jellyfin a file or folder changed, so it refreshes just that part instead of scanning the whole library.
@@ -68,7 +135,7 @@ public class DrtvService
             Directory.CreateDirectory(Path.Combine(cfg.LibraryPath, f));
         }
 
-        return new LibraryWriter(Path.GetFullPath(cfg.LibraryPath), cfg.ServerUrl, cfg.DownloadEpisodeThumbnails, _logger);
+        return new LibraryWriter(Path.GetFullPath(cfg.LibraryPath), ServerUrl, cfg.DownloadEpisodeThumbnails, _logger);
     }
 
     /// <summary>Fetches the whole DRTV catalog and writes it to the library folder.</summary>
@@ -184,6 +251,7 @@ public class DrtvService
                 state.Folders = new Dictionary<string, string>(folders, StringComparer.Ordinal);
                 state.Catalog = catalog;
                 state.LastSync = DateTime.UtcNow;
+                state.StrmBaseUrl = ServerUrl;
                 state.LastSyncResult = $"{catalog.Count} titles, {entries.Count(e => e.Value.Kind == "episode")} episodes, {removed} removed, {failed.Count} series failed";
             });
 

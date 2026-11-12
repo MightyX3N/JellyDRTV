@@ -77,7 +77,7 @@
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="jdServerUrl">Jellyfin's own address</label>
                     <input id="jdServerUrl" type="text" is="emby-input" />
-                    <div class="fieldDescription">How Jellyfin reaches itself; written into the .strm files. The default works unless you changed Jellyfin's port or base URL.</div>
+                    <div class="fieldDescription">Leave empty: the plugin finds it by itself. Only fill this in if playback fails with "connection refused" (e.g. http://127.0.0.1:8096).</div>
                 </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="jdYtDlpPath">yt-dlp path (optional)</label>
@@ -286,7 +286,7 @@
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
                     cfg.LibraryPath = $('#jdLibraryPath').value.trim();
-                    cfg.ServerUrl = $('#jdServerUrl').value.trim() || 'http://127.0.0.1:8096';
+                    cfg.ServerUrl = $('#jdServerUrl').value.trim();
                     cfg.YtDlpPath = $('#jdYtDlpPath').value.trim();
                     cfg.SyncParallelism = parseInt($('#jdParallel').value, 10) || 4;
                     cfg.FavoriteDownloads = $('#jdFavorites').checked;

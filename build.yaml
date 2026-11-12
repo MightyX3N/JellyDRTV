@@ -1,7 +1,7 @@
 ---
 name: "JellyDRTV"
 guid: "6f1d2c3a-8b4e-4d7a-9c21-5e0a7b3d9f14"
-version: "1.0.0.0"
+version: "1.0.1.0"
 targetAbi: "12.4.0.0"
 framework: "net10.0"
 overview: "DRTV as a Jellyfin library"
@@ -15,4 +15,4 @@ owner: "MightyX3N"
 artifacts:
 - "Jellyfin.Plugin.JellyDRTV.dll"
 changelog: >
-  First version.
+  Fix playback when Jellyfin runs on another port than 8096 (e.g. Docker on a NAS): the address is now detected automatically.
