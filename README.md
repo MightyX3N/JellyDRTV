@@ -2,6 +2,8 @@
 
 A Jellyfin plugin that puts all of DRTV into Jellyfin as a normal library.
 
+Website: https://mightyx3n.github.io/JellyDRTV/
+
 - **Everything streams.** Every series, film and program on DRTV shows up in Jellyfin with title, description, poster and episode pictures. Press play and it streams straight from DR, in every Jellyfin app.
 - **Download what you want to keep.** Episodes, whole seasons, whole series, films and programs. Downloads replace the streaming placeholder in the same spot, with Danish subtitles, so they survive when DR removes the title.
 - **Follow series.** New episodes are downloaded automatically.

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JellyDRTV – DRTV as a Jellyfin library</title>
+<meta name="description" content="A Jellyfin plugin that puts all of DRTV into your Jellyfin as a normal library: stream everything, download what you want to keep, follow series.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F3F5F9;
+    --ink: #18233F;
+    --ink-soft: #4A5675;
+    --signal: #2F5BFF;
+    --mist: #E3E8F4;
+    --drm: #C62828;
+    --line: #CDD4E4;
+    --display: "Bricolage Grotesque", system-ui, sans-serif;
+    --body: "Source Sans 3", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation: none !important; transition: none !important; } }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 400 1.0625rem/1.6 var(--body); }
+  a { color: var(--signal); }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--signal); outline-offset: 3px; border-radius: 4px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { font-family: var(--display); line-height: 1.08; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: clamp(1.75rem, 3.4vw, 2.5rem); font-weight: 700; margin-bottom: 0.6em; }
+  h3 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.3em; }
+  p { margin: 0 0 1em; max-width: 64ch; }
+
+  /* Top bar */
+  .top { display: flex; align-items: center; justify-content: space-between; padding-top: 20px; padding-bottom: 20px; }
+  .brand { font-family: var(--display); font-weight: 800; font-size: 1.25rem; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 10px; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--ink); display: grid; place-items: center; }
+  .brand-mark::after { content: ""; width: 0; height: 0; border-left: 10px solid var(--paper); border-top: 6px solid transparent; border-bottom: 6px solid transparent; margin-left: 3px; }
+  .top nav a { margin-left: 20px; color: var(--ink-soft); text-decoration: none; font-weight: 600; }
+  .top nav a:hover { color: var(--ink); }
+
+  /* Hero: the poster wall is the one bold thing on the page */
+  .hero { display: grid; grid-template-columns: 1fr 1.1fr; gap: 48px; align-items: center; padding-top: 40px; padding-bottom: 72px; }
+  .hero h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; margin-bottom: 0.35em; }
+  .hero .lead { font-size: 1.25rem; color: var(--ink-soft); max-width: 34ch; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font: 600 1rem var(--body); text-decoration: none; border: 2px solid var(--ink); color: var(--ink); background: transparent; cursor: pointer; }
+  .btn.primary { background: var(--ink); color: var(--paper); }
+  .btn:hover { transform: translateY(-1px); }
+
+  .wall { margin: 0; position: relative; border-radius: 18px; background: var(--ink); padding: 22px; box-shadow: 0 30px 60px -30px rgba(24,35,63,.55); }
+  .wall-bar { display: flex; gap: 14px; align-items: center; color: #AEB8D6; font-size: .9rem; margin-bottom: 16px; }
+  .wall-bar b { color: #fff; font-family: var(--display); font-size: 1.05rem; }
+  .wall-bar .pill { margin-left: auto; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.08); }
+  .posters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .poster { position: relative; aspect-ratio: 2/3; border-radius: 8px; overflow: hidden; display: flex; align-items: flex-end; padding: 10px; color: #fff; font-family: var(--display); font-weight: 800; font-size: clamp(.72rem, 1.2vw, .92rem); line-height: 1.05; }
+  .poster span { position: relative; z-index: 1; max-width: 100%; overflow-wrap: anywhere; hyphens: auto; text-shadow: 0 1px 8px rgba(0,0,0,.35); }
+  .poster::before { content: ""; position: absolute; inset: 0; background: var(--art); }
+  .poster::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 55%, rgba(0,0,0,.45)); }
+  .badge { position: absolute; top: 7px; z-index: 2; font: 700 .62rem/1 var(--display); padding: 4px 6px; border-radius: 4px; letter-spacing: .04em; }
+  .badge.src { left: 7px; background: rgba(0,0,0,.72); color: #fff; }
+  .badge.drm { right: 7px; background: var(--drm); color: #fff; }
+  .poster.fav { outline: 3px solid #FFC94D; outline-offset: -3px; }
+  .fav-star { position: absolute; top: 5px; right: 8px; z-index: 2; color: #FFC94D; font-size: .95rem; }
+  .wall-note { color: #AEB8D6; font-size: .85rem; margin: 14px 0 0; }
+  .wall-note span { color: #FFC94D; }
+
+  /* Features: plain two-column prose, not cards */
+  section { padding: 64px 0; }
+  .features { border-top: 1px solid var(--line); }
+  .feat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 36px 56px; margin-top: 12px; }
+  .feat p { color: var(--ink-soft); margin: 0; }
+  .feat h3 { display: flex; align-items: center; gap: 10px; }
+  .feat svg { flex: none; }
+
+  /* How it works */
+  .how { background: var(--mist); }
+  .flow-scroll { overflow-x: auto; margin: 24px 0 8px; }
+  .flow { width: 100%; min-width: 720px; height: auto; display: block; }
+  .flow text { font-family: var(--body); }
+
+  /* Steps: these really are sequences, so they're numbered */
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 20px 0 0; max-width: 720px; }
+  .steps li { counter-increment: s; position: relative; padding: 0 0 26px 52px; }
+  .steps li::before { content: counter(s); position: absolute; left: 0; top: -2px; width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: var(--paper); font: 700 1rem/34px var(--display); text-align: center; }
+  .steps li:not(:last-child)::after { content: ""; position: absolute; left: 16px; top: 36px; bottom: 4px; width: 2px; background: var(--line); }
+  .steps b { font-weight: 600; }
+  .copy { display: flex; align-items: stretch; margin: 10px 0 4px; max-width: 640px; border: 2px solid var(--ink); border-radius: 10px; overflow: hidden; background: #fff; }
+  .copy code { flex: 1; min-width: 0; padding: 10px 12px; font: 500 .9rem/1.4 ui-monospace, Menlo, Consolas, monospace; overflow-x: auto; white-space: nowrap; }
+  .copy button { border: 0; border-left: 2px solid var(--ink); background: var(--ink); color: var(--paper); font: 600 .95rem var(--body); padding: 0 16px; cursor: pointer; min-width: 84px; }
+  code.inline { font: 500 .92em ui-monospace, Menlo, Consolas, monospace; background: var(--mist); padding: 1px 6px; border-radius: 5px; }
+  table { border-collapse: collapse; margin: 8px 0 0; }
+  td, th { text-align: left; padding: 6px 18px 6px 0; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; }
+  .two > div, .hero > * { min-width: 0; }
+
+  /* Good to know */
+  .notes { border-top: 1px solid var(--line); }
+  .notes ul { padding-left: 1.2em; max-width: 70ch; color: var(--ink-soft); }
+  .notes li { margin-bottom: .6em; }
+  .notes li b { color: var(--ink); }
+  footer { padding: 32px 0 48px; color: var(--ink-soft); font-size: .92rem; border-top: 1px solid var(--line); }
+
+  @media (max-width: 860px) {
+    .hero, .two { grid-template-columns: 1fr; gap: 32px; }
+    .feat-grid { grid-template-columns: 1fr; }
+    .top nav { display: none; }
+  }
+  @media (max-width: 480px) {
+    .posters { grid-template-columns: repeat(3, 1fr); }
+    .posters .poster:nth-child(n+7) { display: none; }
+    .wall { padding: 14px; }
+    .wall-bar .pill { display: none; }
+    .badge { font-size: .55rem; padding: 3px 4px; top: 5px; }
+    .badge.src { left: 5px; }
+    .badge.drm { right: 5px; top: 22px; }
+  }
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>JellyDRTV</a>
+  <nav aria-label="Page">
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="https://github.com/MightyX3N/JellyDRTV">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>All of DRTV, inside your Jellyfin.</h1>
+      <p class="lead">A Jellyfin plugin that adds DR's series, films and programs to your library. Stream them in any Jellyfin app, and download the ones you want to keep.</p>
+      <div class="actions">
+        <a class="btn primary" href="#install">Install the plugin</a>
+        <a class="btn" href="https://github.com/MightyX3N/JellyDRTV">View on GitHub</a>
+      </div>
+    </div>
+
+    <figure class="wall" aria-label="Illustration: a Jellyfin library with DRTV titles">
+      <div class="wall-bar"><b>DRTV Serier</b> 2,270 shows <span class="pill">Sorted by name</span></div>
+      <div class="posters" lang="da">
+        <div class="poster" style="--art:linear-gradient(160deg,#5B8DEF,#1C3D8F)"><i class="badge src">DRTV</i><span>Fyrtårnet</span></div>
+        <div class="poster fav" style="--art:radial-gradient(circle at 70% 30%,#FFB86B,#C2410C 70%)"><i class="badge src">DRTV</i><span>Kaffeklubben</span><i class="fav-star" aria-hidden="true">★</i></div>
+        <div class="poster" style="--art:linear-gradient(200deg,#2E7D5B,#0F3D2E)"><i class="badge src">DRTV</i><i class="badge drm">DRM</i><span>Granskoven</span></div>
+        <div class="poster" style="--art:linear-gradient(170deg,#9AA7C7,#3B4766)"><i class="badge src">DRTV</i><span>Postbudet</span></div>
+        <div class="poster" style="--art:repeating-linear-gradient(135deg,#E9C46A 0 14px,#D4A93A 14px 28px)"><i class="badge src">DRTV</i><span>Strandkanten</span></div>
+        <div class="poster" style="--art:linear-gradient(150deg,#7C4DFF,#2A1166)"><i class="badge src">DRTV</i><span>Midtvejs</span></div>
+        <div class="poster" style="--art:radial-gradient(circle at 30% 80%,#64B5F6,#0D2B52 75%)"><i class="badge src">DRTV</i><span>Byggepladsen</span></div>
+        <div class="poster" style="--art:linear-gradient(190deg,#EF7A7A,#7A1F2B)"><i class="badge src">DRTV</i><i class="badge drm">DRM</i><span>Nordlys</span></div>
+      </div>
+      <figcaption class="wall-note">Illustration with made-up titles. Red badge: DRM-protected, can't be played. <span>★</span> Favourite: downloads it.</figcaption>
+    </figure>
+  </div>
+
+  <section class="features" id="features">
+    <div class="wrap">
+      <h2>What it does</h2>
+      <div class="feat-grid">
+        <div class="feat">
+          <h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>Stream everything</h3>
+          <p>Every series, film and program on DRTV shows up in Jellyfin with its title, description, poster and episode pictures. Press play and it streams straight from DR, with Danish subtitles.</p>
+        </div>
+        <div class="feat">
+          <h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></svg>Download what you want to keep</h3>
+          <p>Episodes, whole seasons, whole series, films or programs. Downloads take the place of the stream in your library and stay when DR removes the title.</p>
+        </div>
+        <div class="feat">
+          <h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4"/></svg>Follow series</h3>
+          <p>Follow a series and new episodes are downloaded automatically. The plugin checks every two hours.</p>
+        </div>
+        <div class="feat">
+          <h3><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>Favourite = download</h3>
+          <p>Mark something as favourite in any Jellyfin app, on your phone, TV or browser, and it's downloaded. A favourited series is also followed.</p>
+        </div>
+        <div class="feat">
+          <h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>DRM titles are marked</h3>
+          <p>Some bought-in titles are DRM-protected and can't be played outside DR's own apps. They get a red DRM badge, so you know before you press play.</p>
+        </div>
+        <div class="feat">
+          <h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Keeps itself up to date</h3>
+          <p>A nightly sync adds new titles and removes what DR took down, but never your downloads. Updates to the plugin show up in Jellyfin like any other plugin.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="how" id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p>The plugin writes DRTV's catalog into a folder as small placeholder files that Jellyfin reads like normal media. When you press play, the plugin asks DR for the stream right then, so links never go stale.</p>
+      <div class="flow-scroll"><svg class="flow" viewBox="0 0 960 220" role="img" aria-label="DRTV sends the catalog and streams to the JellyDRTV plugin on your server, which writes placeholders and downloads into a folder that Jellyfin reads and plays to your apps.">
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 10 5 0 10z" fill="#18233F"/></marker></defs>
+        <g font-size="15" fill="#18233F">
+          <rect x="10" y="70" width="170" height="80" rx="12" fill="#fff" stroke="#18233F" stroke-width="2"/>
+          <text x="95" y="104" text-anchor="middle" font-weight="600">DRTV</text>
+          <text x="95" y="126" text-anchor="middle" fill="#4A5675">catalog and streams</text>
+          <rect x="260" y="40" width="200" height="140" rx="12" fill="#18233F"/>
+          <text x="360" y="92" text-anchor="middle" fill="#fff" font-weight="600">JellyDRTV plugin</text>
+          <text x="360" y="116" text-anchor="middle" fill="#AEB8D6">sync, stream, download</text>
+          <text x="360" y="140" text-anchor="middle" fill="#AEB8D6">on your server</text>
+          <rect x="540" y="70" width="170" height="80" rx="12" fill="#fff" stroke="#18233F" stroke-width="2"/>
+          <text x="625" y="104" text-anchor="middle" font-weight="600">Library folder</text>
+          <text x="625" y="126" text-anchor="middle" fill="#4A5675">Serier, Film, Programmer</text>
+          <rect x="790" y="70" width="160" height="80" rx="12" fill="#2F5BFF"/>
+          <text x="870" y="104" text-anchor="middle" fill="#fff" font-weight="600">Jellyfin</text>
+          <text x="870" y="126" text-anchor="middle" fill="#E3E8F4">every app you use</text>
+          <path d="M180 110h72" stroke="#18233F" stroke-width="2" marker-end="url(#ah)"/>
+          <path d="M460 110h72" stroke="#18233F" stroke-width="2" marker-end="url(#ah)"/>
+          <path d="M710 110h72" stroke="#18233F" stroke-width="2" marker-end="url(#ah)"/>
+          <text x="216" y="98" text-anchor="middle" font-size="13" fill="#4A5675">HLS</text>
+          <text x="496" y="98" text-anchor="middle" font-size="13" fill="#4A5675">writes</text>
+          <text x="746" y="98" text-anchor="middle" font-size="13" fill="#4A5675">plays</text>
+        </g>
+      </svg></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap two">
+      <div>
+        <h2>Install</h2>
+        <ol class="steps">
+          <li>In Jellyfin, open <b>Dashboard → Plugins → Repositories</b> and press <b>+</b>. Add this address:
+            <div class="copy"><code id="repo">https://raw.githubusercontent.com/MightyX3N/JellyDRTV/main/manifest.json</code><button type="button" data-copy="repo">Copy</button></div>
+          </li>
+          <li>Open <b>Catalog</b>, find <b>JellyDRTV</b> and install it.</li>
+          <li>Restart Jellyfin.</li>
+        </ol>
+        <p>Needs Jellyfin 12.4 or newer. yt-dlp, which does the downloading, is fetched and kept up to date by the plugin.</p>
+      </div>
+      <div>
+        <h2>Set up</h2>
+        <ol class="steps">
+          <li>Open <b>Dashboard → Plugins → JellyDRTV</b>, set the <b>Library folder</b> and save. On Docker or a NAS, use the folder's path <i>inside</i> the container, e.g. <code class="inline">/media/drtv</code>, and map it read/write.</li>
+          <li>Press <b>Sync DRTV catalog now</b>. The first sync takes a while; after that it runs every night.</li>
+          <li>Add three libraries in <b>Dashboard → Libraries</b>:
+            <table>
+              <tr><th>Type</th><th>Folder</th></tr>
+              <tr><td>Shows</td><td><code class="inline">…/Serier</code></td></tr>
+              <tr><td>Movies</td><td><code class="inline">…/Film</code></td></tr>
+              <tr><td>Movies</td><td><code class="inline">…/Programmer</code></td></tr>
+            </table>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="wrap">
+      <h2>Good to know</h2>
+      <ul>
+        <li><b>Denmark only.</b> DR only sends its streams to Danish connections, so your Jellyfin server has to be in Denmark. The plugin doesn't try to get around that.</li>
+        <li><b>DRM titles can't be played.</b> They stay in your library, marked with a red badge, but neither Jellyfin nor the plugin can play or download them.</li>
+        <li><b>Downloads are for private use.</b> Keep them for yourself; don't share them.</li>
+        <li><b>Not made by DR.</b> JellyDRTV is an independent, open-source project and isn't affiliated with DR. It uses the same public web API as dr.dk/drtv.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">JellyDRTV is open source. Code, issues and updates are on <a href="https://github.com/MightyX3N/JellyDRTV">GitHub</a>.</div>
+</footer>
+
+<script>
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = document.getElementById(b.dataset.copy).textContent;
+      var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1800); };
+      if (navigator.clipboard) { navigator.clipboard.writeText(text).then(done, function () { b.textContent = 'Select and copy'; }); }
+      else { b.textContent = 'Select and copy'; }
+    });
+  });
+</script>
+</body>
+</html>
