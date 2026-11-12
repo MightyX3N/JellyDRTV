@@ -118,7 +118,29 @@ public partial class DrApiClient
     public async Task<DrSeries?> GetSeriesAsync(string showId, CancellationToken ct)
     {
         var show = await GetItemAsync(showId, ct).ConfigureAwait(false);
-        if (show is null || (string?)show["type"] != "show")
+        return show is null ? null : await GetSeriesFromShowAsync(showId, show, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A short fingerprint of a series: its seasons and how many episodes each has. If it's unchanged since
+    /// the last sync, the seasons don't need to be fetched again.
+    /// </summary>
+    public static string? SeriesFingerprint(JsonNode? show)
+    {
+        if (show is null || (string?)show["type"] != "show" || show["seasons"]?["items"] is not JsonArray seasons)
+        {
+            return null;
+        }
+
+        var parts = seasons.Select(x => $"{(string?)x?["id"]}:{GetInt(x?["episodeCount"])}:{GetInt(x?["availableEpisodeCount"])}");
+        var paging = (string?)show["seasons"]?["paging"]?["next"];
+        return string.Join('|', parts) + (paging is null ? string.Empty : "|more") + "|" + (string?)show["title"];
+    }
+
+    /// <summary>Gets a series from an already fetched show item.</summary>
+    public async Task<DrSeries?> GetSeriesFromShowAsync(string showId, JsonNode show, CancellationToken ct)
+    {
+        if ((string?)show["type"] != "show")
         {
             return null;
         }

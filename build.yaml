@@ -1,7 +1,7 @@
 ---
 name: "JellyDRTV"
 guid: "6f1d2c3a-8b4e-4d7a-9c21-5e0a7b3d9f14"
-version: "1.0.2.0"
+version: "1.1.0.0"
 targetAbi: "12.4.0.0"
 framework: "net10.0"
 overview: "DRTV as a Jellyfin library"
@@ -15,4 +15,4 @@ owner: "MightyX3N"
 artifacts:
 - "Jellyfin.Plugin.JellyDRTV.dll"
 changelog: >
-  DRM-protected titles are detected and marked (red DRM badge on the poster, "DRM" tag); "DRTV" badge on posters (can be turned off).
+  Live TV: DR1, DR2, DR Ramasjang and TVA with a full TV guide and recording. Much lighter sync (unchanged series are skipped, no full library rescans). Jellyfin now reloads redrawn posters; Refresh posters button.

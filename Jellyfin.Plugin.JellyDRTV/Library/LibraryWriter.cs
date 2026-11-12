@@ -22,6 +22,8 @@ public class LibraryWriter
     private readonly string _serverUrl;
     private readonly bool _episodeThumbs;
     private readonly bool _badges;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _changed = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _posters = new(StringComparer.Ordinal);
     private readonly ILogger _logger;
 
     public LibraryWriter(string root, string serverUrl, bool episodeThumbs, bool badges, ILogger logger)
@@ -34,6 +36,30 @@ public class LibraryWriter
     }
 
     public string Root => _root;
+
+    /// <summary>Gets the title folders (series, film, program) where something changed on disk.</summary>
+    public IReadOnlyCollection<string> ChangedTitleDirs => _changed.Keys.ToList();
+
+    /// <summary>Gets the title folders whose poster was redrawn.</summary>
+    public IReadOnlyCollection<string> ChangedPosterDirs => _posters.Keys.ToList();
+
+    /// <summary>Remembers which title folder a changed file belongs to.</summary>
+    private void Mark(string path)
+    {
+        var dir = TitleDir(path);
+        if (dir is not null)
+        {
+            _changed.TryAdd(dir, 0);
+        }
+    }
+
+    /// <summary>The folder right under Serier/Film/Programmer that contains the path.</summary>
+    private string? TitleDir(string path)
+    {
+        var rel = Path.GetRelativePath(_root, path);
+        var parts = rel.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 && !rel.StartsWith("..", StringComparison.Ordinal) ? Path.Combine(_root, parts[0], parts[1]) : null;
+    }
 
     /// <summary>Returns the downloaded video for a base path, if any.</summary>
     public static string? FindVideo(string basePath)
@@ -105,6 +131,10 @@ public class LibraryWriter
             DrPath = t.Path,
         };
     }
+
+    /// <summary>Only updates a series' poster (used when the series itself hasn't changed).</summary>
+    public Task UpdateSeriesPosterAsync(DrTitle t, bool drm, CancellationToken ct)
+        => WritePosterAsync(t.PosterUrl, SeriesDir(t), drm, ct);
 
     /// <summary>Writes a full series. Returns entries for every episode, plus the folder → id map.</summary>
     public async Task<(List<LibraryEntry> Entries, Dictionary<string, string> Folders)> WriteSeriesAsync(DrSeries s, bool drm, CancellationToken ct)
@@ -214,6 +244,7 @@ public class LibraryWriter
 
             try
             {
+                Mark(dir);
                 Directory.Delete(dir, true);
             }
             catch (IOException)
@@ -249,7 +280,7 @@ public class LibraryWriter
         WriteIfChanged(basePath + ".strm", StreamUrl(drId));
     }
 
-    private static void WriteIfChanged(string path, string content)
+    private void WriteIfChanged(string path, string content)
     {
         try
         {
@@ -259,6 +290,7 @@ public class LibraryWriter
             }
 
             File.WriteAllText(path, content, new UTF8Encoding(false));
+            Mark(path);
         }
         catch (IOException)
         {
@@ -299,6 +331,13 @@ public class LibraryWriter
             }
 
             await File.WriteAllBytesAsync(posterPath, bytes, ct).ConfigureAwait(false);
+            Mark(posterPath);
+            var titleDir = TitleDir(posterPath);
+            if (titleDir is not null)
+            {
+                _posters.TryAdd(titleDir, 0);
+            }
+
             await File.WriteAllTextAsync(stampPath, stamp, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException && !ct.IsCancellationRequested)
@@ -328,13 +367,14 @@ public class LibraryWriter
         }
     }
 
-    private static void TryDelete(string path)
+    private void TryDelete(string path)
     {
         try
         {
             if (File.Exists(path))
             {
                 File.Delete(path);
+                Mark(path);
             }
         }
         catch (IOException)

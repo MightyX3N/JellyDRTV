@@ -75,6 +75,9 @@ public class PluginState
 
     /// <summary>Gets or sets which titles (film/program/series id) are DRM-protected, so they're only checked once.</summary>
     public Dictionary<string, bool> Drm { get; set; } = [];
+
+    /// <summary>Gets or sets each series' fingerprint from the last sync, to skip series that haven't changed.</summary>
+    public Dictionary<string, string> SeriesFingerprints { get; set; } = [];
 }
 
 /// <summary>Thread-safe JSON-backed state.</summary>

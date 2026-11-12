@@ -56,6 +56,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool PosterBadges { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether DR's live channels and TV guide are added to Jellyfin's Live TV.
+    /// </summary>
+    public bool LiveTv { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the number of parallel requests to DR during sync.
     /// </summary>
     public int SyncParallelism { get; set; } = 6;

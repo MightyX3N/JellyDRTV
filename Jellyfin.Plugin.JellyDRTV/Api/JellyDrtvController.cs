@@ -75,6 +75,52 @@ public class JellyDrtvController : ControllerBase
         return Content(playlist!, "application/vnd.apple.mpegurl");
     }
 
+    /// <summary>Jellyfin's Live TV tuner reads this playlist of DR's live channels.</summary>
+    [HttpGet("LiveTv/channels.m3u")]
+    [AllowAnonymous]
+    public async Task<ActionResult> LiveChannels(CancellationToken ct)
+        => Content(await _service.Live.BuildM3uAsync(_service.ServerUrl, ct).ConfigureAwait(false), "audio/x-mpegurl");
+
+    /// <summary>Jellyfin's guide reads this XMLTV file built from DR's TV schedule.</summary>
+    [HttpGet("LiveTv/guide.xml")]
+    [AllowAnonymous]
+    public async Task<ActionResult> LiveGuide(CancellationToken ct)
+        => Content(await _service.Live.BuildGuideAsync(ct).ConfigureAwait(false), "application/xml");
+
+    /// <summary>A live channel's stream: DR's playlist with only the best quality and absolute addresses.</summary>
+    [HttpGet("Live/{id}/master.m3u8")]
+    [AllowAnonymous]
+    public async Task<ActionResult> LiveStream([FromRoute] string id, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 32 || !id.All(char.IsAsciiLetterOrDigit))
+        {
+            return BadRequest();
+        }
+
+        var url = await _service.Live.GetStreamUrlAsync(id, ct).ConfigureAwait(false);
+        if (url is null)
+        {
+            return NotFound("No live stream for this channel.");
+        }
+
+        try
+        {
+            return Content(await DrApiClient.GetAbsolutePlaylistAsync(url, ct).ConfigureAwait(false), "application/vnd.apple.mpegurl");
+        }
+        catch (HttpRequestException ex)
+        {
+            var msg = ex.StatusCode == System.Net.HttpStatusCode.Forbidden
+                ? "DR blocked the live stream. DR's live channels only work from a server in Denmark."
+                : "DR refused the live stream: " + ex.Message;
+            return StatusCode(StatusCodes.Status502BadGateway, msg);
+        }
+    }
+
+    /// <summary>Makes Jellyfin reload the posters of all DRTV titles (e.g. to show the badges).</summary>
+    [HttpPost("RefreshPosters")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public ActionResult<object> RefreshPosters() => Ok(new { Queued = _service.RefreshAllPosters() });
+
     /// <summary>Plugin status for the settings page.</summary>
     [HttpGet("Status")]
     [Authorize(Policy = Policies.RequiresElevation)]
@@ -95,6 +141,7 @@ public class JellyDrtvController : ControllerBase
             Downloaded = s.Items.Values.Count(e => LibraryWriter.FindVideo(e.BasePath) is not null),
             Drm = s.Drm.Count(d => d.Value),
             YtDlpVersion = ytdlp,
+            LiveTv = cfg.LiveTv,
             LibraryPath = cfg.LibraryPath,
         });
     }

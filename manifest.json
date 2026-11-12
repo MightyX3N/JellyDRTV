@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.1.0.0",
+        "changelog": "Live TV: DR1, DR2, DR Ramasjang and TVA in Jellyfin's Live TV with DR's TV guide and recording (can be turned off). Much lighter sync: unchanged series are skipped and Jellyfin only rescans what changed. Jellyfin now reloads redrawn posters, plus a Refresh posters button. Sync button shows when a sync is running.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/MightyX3N/JellyDRTV/main/releases/jellydrtv_1.1.0.0.zip",
+        "checksum": "2eebfcd0f92a57f0fb024607c77ca9b0",
+        "timestamp": "2026-11-12T07:18:47Z"
+      },
+      {
         "version": "1.0.2.0",
         "changelog": "DRM-protected titles are detected and marked: red DRM badge on the poster and a DRM tag (Jellyfin can't play or download them). DRTV badge on all DRTV posters (can be turned off in settings).",
         "targetAbi": "12.4.0.0",

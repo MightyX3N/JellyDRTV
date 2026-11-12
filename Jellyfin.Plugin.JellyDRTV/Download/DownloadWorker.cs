@@ -53,13 +53,24 @@ public partial class DownloadWorker : BackgroundService
             Plugin.Instance.ConfigurationChanged += OnConfigurationChanged;
         }
 
-        // Point the .strm files at Jellyfin's current address (port or base URL may have changed).
-        _ = Task.Run(() => FixStrmAddresses(), cancellationToken);
+        // Point the .strm files at Jellyfin's current address (port or base URL may have changed),
+        // and add (or remove) DRTV in Live TV to match the setting.
+        _ = Task.Run(
+            async () =>
+            {
+                FixStrmAddresses();
+                await _service.ApplyLiveTvAsync(waitForServer: true).ConfigureAwait(false);
+            },
+            cancellationToken);
         return base.StartAsync(cancellationToken);
     }
 
     private void OnConfigurationChanged(object? sender, MediaBrowser.Model.Plugins.BasePluginConfiguration e)
-        => _ = Task.Run(() => FixStrmAddresses());
+        => _ = Task.Run(async () =>
+        {
+            FixStrmAddresses();
+            await _service.ApplyLiveTvAsync().ConfigureAwait(false);
+        });
 
     private void FixStrmAddresses()
     {

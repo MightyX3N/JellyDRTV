@@ -42,6 +42,7 @@
                 <div id="jdStatus" class="jd-muted">Loading…</div>
                 <div class="jd-row">
                     <button type="button" class="raised jd-btn" id="jdSyncNow"><span>Sync DRTV catalog now</span></button>
+                    <button type="button" class="jd-btn" id="jdRefreshPosters"><span>Refresh posters</span></button>
                 </div>
             </div>
 
@@ -97,6 +98,13 @@
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label class="emby-checkbox-label">
+                        <input id="jdLiveTv" type="checkbox" is="emby-checkbox" />
+                        <span>Live TV</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Adds DR's live channels (DR1, DR2, DR Ramasjang, TVA) and DR's TV guide to Jellyfin's Live TV, including recording. Only works from a server in Denmark.</div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
                         <input id="jdBadges" type="checkbox" is="emby-checkbox" />
                         <span>Badges on posters</span>
                     </label>
@@ -140,6 +148,10 @@
                     lines.push('Last sync: ' + esc(fmtDate(s.LastSync)) + (s.Syncing ? ' — <b>sync running…</b>' : ''));
                     if (s.LastSyncResult) { lines.push(esc(s.LastSyncResult)); }
                     lines.push('In library: ' + s.Titles + ' titles · ' + s.Episodes + ' episodes · ' + s.Movies + ' films · ' + s.Programs + ' programs · ' + s.Downloaded + ' downloaded' + (s.Drm ? ' · ' + s.Drm + ' DRM-protected (can\'t play)' : ''));
+                    var sync = $('#jdSyncNow');
+                    sync.disabled = !!s.Syncing;
+                    sync.querySelector('span').textContent = s.Syncing ? 'Sync running…' : 'Sync DRTV catalog now';
+                    lines.push('Live TV: ' + (s.LiveTv ? 'DR\'s live channels are in Jellyfin\'s Live TV' : 'off'));
                     lines.push('yt-dlp: ' + esc(s.YtDlpVersion || 'not installed yet (installed automatically on the first download)'));
                     $('#jdStatus').innerHTML = lines.join('<br>');
                 });
@@ -257,11 +269,21 @@
                 ApiClient.getScheduledTasks({ isHidden: false }).then(function (tasks) {
                     var t = tasks.filter(function (x) { return x.Key === 'JellyDRTVSyncCatalog'; })[0];
                     if (!t) { toast('Sync task not found.'); return; }
+                    if (t.State === 'Running') { toast('A sync is already running.'); return; }
                     return ApiClient.startScheduledTask(t.Id).then(function () {
                         toast('Sync started. The first sync takes a while; you can follow it under Scheduled Tasks.');
                         setTimeout(loadStatus, 1500);
                     });
                 });
+            });
+
+            $('#jdRefreshPosters').addEventListener('click', function () {
+                var b = $('#jdRefreshPosters');
+                b.disabled = true;
+                api('POST', 'JellyDRTV/RefreshPosters').then(function (r) { return r.json ? r.json() : r; }).then(function (r) {
+                    toast('Jellyfin is reloading ' + ((r && r.Queued) || 0) + ' posters. They update one by one over the next minutes.');
+                    b.disabled = false;
+                }, function (e) { b.disabled = false; errText(e).then(toast); });
             });
 
             $('#jdSearch').addEventListener('input', function () {
@@ -279,6 +301,7 @@
                     $('#jdFavorites').checked = !!cfg.FavoriteDownloads;
                     $('#jdThumbs').checked = !!cfg.DownloadEpisodeThumbnails;
                     $('#jdBadges').checked = cfg.PosterBadges !== false;
+                    $('#jdLiveTv').checked = cfg.LiveTv !== false;
                     Dashboard.hideLoadingMsg();
                 });
                 refresh();
@@ -300,6 +323,7 @@
                     cfg.FavoriteDownloads = $('#jdFavorites').checked;
                     cfg.DownloadEpisodeThumbnails = $('#jdThumbs').checked;
                     cfg.PosterBadges = $('#jdBadges').checked;
+                    cfg.LiveTv = $('#jdLiveTv').checked;
                     return ApiClient.updatePluginConfiguration(pluginId, cfg);
                 }).then(function (result) {
                     Dashboard.processPluginConfigurationUpdateResult(result);

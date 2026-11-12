@@ -10,6 +10,7 @@ Website: https://mightyx3n.github.io/JellyDRTV/
 - **Download what you want to keep.** Episodes, whole seasons, whole series, films and programs. Downloads replace the streaming placeholder in the same spot, with Danish subtitles, so they survive when DR removes the title.
 - **Follow series.** New episodes are downloaded automatically.
 - **You can see what's what.** Posters get a small "DRTV" badge, and titles that are DRM-protected get a red "DRM" badge and a `DRM` tag, because Jellyfin can't play or download those. The badges can be turned off.
+- **Live TV.** DR1, DR2, DR Ramasjang and TVA show up in Jellyfin's Live TV with DR's TV guide, and you can record programmes with Jellyfin's DVR. Added automatically; can be turned off in the settings.
 - **Favourite = download.** Mark something as favourite in any Jellyfin app (phone, TV, web) and it's downloaded. A favourited series is followed.
 
 > Only works on a Jellyfin server **in Denmark**. DR blocks most streams outside Denmark, and the plugin does not try to get around that. Titles that are DRM-protected can't be played or downloaded; they are marked so you can see which ones.
@@ -63,6 +64,8 @@ If you changed Jellyfin's port or set a base URL, change **Jellyfin's own addres
 |---|---|---|
 | Sync DRTV catalog | daily 04:00 | Adds new titles and episodes, removes what DR took down (downloaded files are never removed) |
 | Check followed DRTV series | every 2 hours | Downloads new episodes of followed series |
+
+The sync only fetches series again when DR has changed something in them, and only tells Jellyfin about the folders that changed, so it stays light after the first run. If posters in Jellyfin don't show the badges, press **Refresh posters** on the plugin page.
 
 ## How it works
 

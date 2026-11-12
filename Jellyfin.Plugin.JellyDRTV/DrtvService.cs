@@ -1,9 +1,14 @@
 using Jellyfin.Plugin.JellyDRTV.Configuration;
 using Jellyfin.Plugin.JellyDRTV.Dr;
 using Jellyfin.Plugin.JellyDRTV.Library;
+using Jellyfin.Plugin.JellyDRTV.Live;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.LiveTv;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.JellyDRTV;
@@ -17,14 +22,31 @@ public class DrtvService
     private readonly ILibraryManager _libraryManager;
     private readonly ILibraryMonitor _libraryMonitor;
     private readonly IServerApplicationHost _host;
+    private readonly IProviderManager _providerManager;
+    private readonly IFileSystem _fileSystem;
     private readonly DrApiClient _api;
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly SemaphoreSlim _queueSignal = new(0);
 
-    public DrtvService(ILogger<DrtvService> logger, ILibraryManager libraryManager, ILibraryMonitor libraryMonitor, IServerApplicationHost host, IApplicationPaths paths)
+    public DrtvService(
+        ILogger<DrtvService> logger,
+        ILibraryManager libraryManager,
+        ILibraryMonitor libraryMonitor,
+        IServerApplicationHost host,
+        IApplicationPaths paths,
+        IProviderManager providerManager,
+        IFileSystem fileSystem,
+        IConfigurationManager configurationManager,
+        ITunerHostManager tunerHostManager,
+        IListingsManager listingsManager,
+        ITaskManager taskManager)
     {
         _logger = logger;
         _host = host;
+        _providerManager = providerManager;
+        _fileSystem = fileSystem;
+        Live = new DrLive(logger);
+        LiveTv = new LiveTvSetup(configurationManager, tunerHostManager, listingsManager, taskManager, logger);
         _libraryManager = libraryManager;
         _libraryMonitor = libraryMonitor;
         _api = new DrApiClient(logger);
@@ -34,6 +56,138 @@ public class DrtvService
     public StateStore State { get; }
 
     public DrApiClient Api => _api;
+
+    public DrLive Live { get; }
+
+    public LiveTvSetup LiveTv { get; }
+
+    /// <summary>Adds or removes DRTV in Jellyfin's Live TV to match the setting.</summary>
+    public async Task ApplyLiveTvAsync(bool waitForServer = false)
+    {
+        try
+        {
+            if (waitForServer)
+            {
+                // Jellyfin checks the tuner's channel list when it's added, so the server must be accepting requests.
+                for (var i = 0; i < 60; i++)
+                {
+                    try
+                    {
+                        using var resp = await DrApiClient.HttpClient.GetAsync(ServerUrl + "/System/Info/Public").ConfigureAwait(false);
+                        if (resp.IsSuccessStatusCode)
+                        {
+                            break;
+                        }
+                    }
+                    catch (HttpRequestException)
+                    {
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                }
+            }
+
+            await LiveTv.ApplyAsync(Config.LiveTv, ServerUrl).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "JellyDRTV: could not set up Live TV");
+        }
+    }
+
+    /// <summary>
+    /// Makes Jellyfin re-read the posters (and other images) of the given library folders or files.
+    /// Jellyfin otherwise keeps showing its cached copy after a poster is redrawn.
+    /// </summary>
+    public int RefreshImages(IEnumerable<string> paths)
+    {
+        var count = 0;
+        foreach (var path in paths.Distinct(StringComparer.Ordinal))
+        {
+            var item = FindItem(path);
+            if (item is null)
+            {
+                continue;
+            }
+
+            _providerManager.QueueRefresh(
+                item.Id,
+                new MetadataRefreshOptions(new DirectoryService(_fileSystem))
+                {
+                    MetadataRefreshMode = MetadataRefreshMode.Default,
+                    ImageRefreshMode = MetadataRefreshMode.FullRefresh,
+                    ReplaceAllImages = false,
+                    ForceSave = true,
+                },
+                RefreshPriority.Normal);
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Tells Jellyfin what changed after a sync: just the changed title folders, or a full scan when
+    /// almost everything changed (first sync). Redrawn posters get their images reloaded.
+    /// </summary>
+    private void NotifyLibrary(LibraryWriter writer)
+    {
+        var changed = writer.ChangedTitleDirs;
+        if (changed.Count > 300)
+        {
+            _libraryManager.QueueLibraryScan();
+        }
+        else
+        {
+            foreach (var dir in changed)
+            {
+                NotifyChanged(dir);
+            }
+        }
+
+        var posters = writer.ChangedPosterDirs;
+        var refreshed = posters.Count > 0 ? RefreshImages(posters) : 0;
+        _logger.LogInformation("JellyDRTV: {Changed} titles changed on disk, {Posters} posters redrawn ({Refreshed} sent to Jellyfin)", changed.Count, posters.Count, refreshed);
+    }
+
+    /// <summary>Asks Jellyfin to reload the posters of every DRTV title.</summary>
+    public int RefreshAllPosters()
+    {
+        var dirs = State.Read(s =>
+            s.Items.Values.Where(e => e.Kind != "episode").Select(e => Path.GetDirectoryName(e.BasePath)!)
+                .Concat(s.Items.Values.Where(e => e.Kind == "episode").Select(e => Path.GetDirectoryName(Path.GetDirectoryName(e.BasePath)!)!))
+                .Distinct(StringComparer.Ordinal)
+                .ToList());
+        return RefreshImages(dirs);
+    }
+
+    /// <summary>Finds the Jellyfin item for a series folder or a film/program folder.</summary>
+    private MediaBrowser.Controller.Entities.BaseItem? FindItem(string path)
+    {
+        var folder = _libraryManager.FindByPath(path, true);
+        if (folder is MediaBrowser.Controller.Entities.TV.Series)
+        {
+            return folder;
+        }
+
+        // Films and programs: the item is the video or .strm file inside the folder.
+        if (Directory.Exists(path))
+        {
+            foreach (var f in Directory.GetFiles(path))
+            {
+                if (f.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || LibraryWriter.VideoExtensions.Any(x => f.EndsWith(x, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var item = _libraryManager.FindByPath(f, false);
+                    if (item is not null)
+                    {
+                        return item;
+                    }
+                }
+            }
+        }
+
+        return folder;
+    }
 
     public static PluginConfiguration Config => Plugin.Instance?.Configuration ?? new PluginConfiguration();
 
@@ -158,7 +312,16 @@ public class DrtvService
             var folders = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.Ordinal);
             var failedShows = new System.Collections.Concurrent.ConcurrentBag<string>();
             var series = new System.Collections.Concurrent.ConcurrentBag<DrSeries>();
+            var fingerprints = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
+            var (oldEntries, oldFolders, oldFingerprints) = State.Read(st => (
+                st.Items.Values.Where(e => e.Kind == "episode").ToList(),
+                new Dictionary<string, string>(st.Folders, StringComparer.Ordinal),
+                new Dictionary<string, string>(st.SeriesFingerprints)));
+            var followedIds = Config.FollowedShows.Select(f => f.ShowId).ToHashSet();
+            var entriesByShow = oldEntries.Where(e => e.ShowId is not null).GroupBy(e => e.ShowId!).ToDictionary(g => g.Key, g => g.ToList());
+            var foldersById = oldFolders.GroupBy(kv => kv.Value).ToDictionary(g => g.Key, g => g.Select(kv => kv.Key).ToList());
             var done = 0;
+            var skipped = 0;
 
             await Parallel.ForEachAsync(
                 catalog,
@@ -169,13 +332,52 @@ public class DrtvService
                     {
                         if (title.Kind == DrKind.Series)
                         {
-                            var s = await _api.GetSeriesAsync(title.Id, token).ConfigureAwait(false);
+                            var show = await _api.GetItemAsync(title.Id, token).ConfigureAwait(false);
+                            var fp = DrApiClient.SeriesFingerprint(show);
+                            if (show is not null && fp is not null && !followedIds.Contains(title.Id)
+                                && oldFingerprints.TryGetValue(title.Id, out var oldFp) && oldFp == fp
+                                && Directory.Exists(writer.SeriesDir(title)))
+                            {
+                                // Nothing changed in this series since the last sync: keep what's on disk.
+                                var showEntries = entriesByShow.TryGetValue(title.Id, out var list) ? list : [];
+                                foreach (var x in showEntries)
+                                {
+                                    entries[x.DrId] = x;
+                                }
+
+                                var groupIds = showEntries.Select(e => e.SeasonId).Append(title.Id).ToHashSet();
+                                foreach (var id in groupIds)
+                                {
+                                    if (id is not null && foldersById.TryGetValue(id, out var paths))
+                                    {
+                                        foreach (var p in paths)
+                                        {
+                                            folders[p] = id;
+                                        }
+                                    }
+                                }
+
+                                fingerprints[title.Id] = fp;
+                                var cachedDrm = await IsDrmAsync(title.Id, null, token).ConfigureAwait(false);
+                                await writer.UpdateSeriesPosterAsync(title, cachedDrm, token).ConfigureAwait(false);
+                                Interlocked.Increment(ref skipped);
+                                var n0 = Interlocked.Increment(ref done);
+                                progress.Report(3 + (90.0 * n0 / catalog.Count));
+                                return;
+                            }
+
+                            var s = show is null ? null : await _api.GetSeriesFromShowAsync(title.Id, show, token).ConfigureAwait(false);
                             if (s is null)
                             {
                                 failedShows.Add(title.Id);
                             }
                             else if (s.Seasons.Sum(x => x.Episodes.Count) > 0)
                             {
+                                if (fp is not null)
+                                {
+                                    fingerprints[title.Id] = fp;
+                                }
+
                                 var drm = await IsDrmAsync(s.Title.Id, FirstEpisodeId(s), token).ConfigureAwait(false);
                                 var (e, f) = await writer.WriteSeriesAsync(s, drm, token).ConfigureAwait(false);
                                 foreach (var x in e)
@@ -252,6 +454,7 @@ public class DrtvService
                 state.Items = new Dictionary<string, LibraryEntry>(entries);
                 state.Folders = new Dictionary<string, string>(folders, StringComparer.Ordinal);
                 state.Catalog = catalog;
+                state.SeriesFingerprints = new Dictionary<string, string>(fingerprints);
                 state.LastSync = DateTime.UtcNow;
                 state.StrmBaseUrl = ServerUrl;
                 state.LastSyncResult = $"{catalog.Count} titles, {entries.Count(e => e.Value.Kind == "episode")} episodes, {removed} removed, {failed.Count} series failed";
@@ -260,7 +463,8 @@ public class DrtvService
             var queued = EnqueueFollowed(series);
             _logger.LogInformation("JellyDRTV: sync done ({Result}); {Queued} new episodes queued from followed series", State.Read(s => s.LastSyncResult), queued);
             progress.Report(97);
-            _libraryManager.QueueLibraryScan();
+            NotifyLibrary(writer);
+            _logger.LogInformation("JellyDRTV: {Skipped} unchanged series skipped", skipped);
             progress.Report(100);
         }
         finally
