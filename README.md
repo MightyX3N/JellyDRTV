@@ -18,9 +18,17 @@ yt-dlp is downloaded and kept up to date by the plugin automatically. Jellyfin's
 
 ## Install
 
-1. Build it (see below) or grab `Jellyfin.Plugin.JellyDRTV.dll` from a release.
-2. Put the dll in a folder called `JellyDRTV` inside Jellyfin's `plugins` folder, e.g. `/config/data/plugins/JellyDRTV/` in Docker.
+**From the plugin repository (recommended):**
+
+1. In Jellyfin go to **Dashboard → Plugins → Repositories**, press **+** and add:
+   - Name: `JellyDRTV`
+   - URL: `https://raw.githubusercontent.com/MightyX3N/jellydrtv/main/manifest.json`
+2. Go to **Catalog**, find **JellyDRTV** and install it.
 3. Restart Jellyfin.
+
+Updates then show up in Jellyfin like any other plugin.
+
+**Manually:** put `Jellyfin.Plugin.JellyDRTV.dll` (from the zip in `releases/`, or built yourself, see below) in a folder called `JellyDRTV` inside Jellyfin's `plugins` folder, e.g. `/config/data/plugins/JellyDRTV/` in Docker, and restart Jellyfin.
 
 ## Set up
 
